@@ -114,14 +114,43 @@ fi
 
 # Настройка порта для SSH
 echo -e "\nДля повышения безопасности сервера рекомендуется изменить стандартный порт SSH."
+
+# Определяем текущий порт SSH из конфига, если он задан.
+# Если порт не задан, используется стандартный 22.
+default_ssh_port=22
+current_ssh_port=$(grep -E '^[[:space:]]*Port[[:space:]]+[0-9]+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -n1)
+if [[ -n "$current_ssh_port" ]]; then
+    default_ssh_port="$current_ssh_port"
+fi
+
+# Временный бэкап конфига SSH на случай отката
+ssh_config_backup="/etc/ssh/sshd_config.bak.$$"
+cp /etc/ssh/sshd_config "$ssh_config_backup"
+config_modified=false
+
 ssh_ready=false
 
 while [[ "$ssh_ready" != "true" ]]; do
-    read -p "Введите новый порт SSH (1024–65535): " ssh_port
+    read -r -p "Введите новый порт SSH (1024–65535) или нажмите Enter, чтобы оставить порт по умолчанию ($default_ssh_port): " ssh_port
+
+    # Пустой ввод — оставляем порт по умолчанию
+    if [[ -z "$ssh_port" ]]; then
+        # Если ранее уже меняли конфиг, возвращаем исходный
+        if [[ "$config_modified" == "true" ]]; then
+            cp "$ssh_config_backup" /etc/ssh/sshd_config
+            systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
+            sleep 2
+        fi
+
+        ssh_port="$default_ssh_port"
+        echo -e "\nОставляем порт SSH по умолчанию: $ssh_port."
+        ssh_ready=true
+        break
+    fi
 
     # Валидация диапазона
     if ! [[ "$ssh_port" =~ ^[0-9]+$ ]] || ((ssh_port < 1024 || ssh_port > 65535)); then
-        echo "\nНекорректный диапазон. Попробуйте снова."
+        echo -e "\nНекорректный диапазон. Попробуйте снова."
         continue
     fi
 
@@ -131,21 +160,26 @@ while [[ "$ssh_ready" != "true" ]]; do
     else
         echo "Port $ssh_port" >> /etc/ssh/sshd_config
     fi
-    
+
+    config_modified=true
+
     # Перезапуск службы
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     sleep 2
 
     # Проверяем, что SSH действительно слушает новый порт
     if ss -tlnp | grep -q ":$ssh_port "; then
-        echo "\nSSH успешно запущен на порту $ssh_port."
+        echo -e "\nSSH успешно запущен на порту $ssh_port."
         ssh_ready=true
     else
-        echo "\nSSH не поднялся на порту $ssh_port."
-        echo "\nВозможные причины: порт занят, заблокирован файрволом или синтаксическая ошибка в sshd_config."
-        echo "\nПопробуйте ввести другой порт."
+        echo -e "\nSSH не поднялся на порту $ssh_port."
+        echo -e "\nВозможные причины: порт занят, заблокирован файрволом или синтаксическая ошибка в sshd_config."
+        echo -e "\nПопробуйте ввести другой порт."
     fi
 done
+
+# Удаляем временный бэкап после успешной настройки
+rm -f "$ssh_config_backup"
 
 # Настройка firewall с UFW
 echo "Настройка фаервола (ufw)..."
