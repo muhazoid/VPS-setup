@@ -39,7 +39,7 @@
 1. Для запуска скрипта с правами `root`:
 
     ```bash
-    bash <(curl -Ls https://raw.githubusercontent.com/SergeyKrasnoslobodtsev/VPS-setup/main/setup_server.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/muhazoid/VPS-setup/c5052958271d85a3b4c16ef1d5afa1700b0edaea/setup_server.sh)
     ```
 
 2. Если вам нужно явно указать `sudo`:
